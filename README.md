@@ -21,16 +21,8 @@ Simulate and visualize recurrent events under a virtual‑age (sARA1) model with
    - Print validation checks and summary stats (including censoring percentages).
    - Display a counting‑process step plot for a randomly chosen subject.
 
-## Save the example figure (optional)
-To save the counting‑process plot shown in the script to your repo (e.g., docs/images), add and run:
-```matlab
-outDir = fullfile('docs','images'); if ~exist(outDir,'dir'), mkdir(outDir); end
-exportgraphics(gcf, fullfile(outDir,'recurrent_event_example.png'), 'Resolution', 200);
-```
-
 ## Notes
-- The script defines a local function `simulate_recurrent_events_with_censoring` at the end of the file (MATLAB requires local functions to appear after script code).
-- Parameters like `n`, `tau_max`, baseline hazard, and ρ are set near the top of each section and can be adjusted as needed.
+Parameters like `n`, `tau_max`, baseline hazard, and ρ are set near the top of each section and can be adjusted as needed.
 
 ## Result
 
