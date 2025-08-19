@@ -480,3 +480,122 @@ eventsTable = table( ...
     'VariableNames', {'id', 'time', 'gap_time', 'event', 'covariate', 'tau'} ...
 );
 end
+
+% Test for simulate_recurrent_events_with_censoring
+
+clear; clc;
+rng(12); % Reproducibility
+
+% Run simulation
+eventsTable = simulate_recurrent_events_with_censoring();
+
+% Inspect first rows
+disp('Head of eventsTable:');
+disp(eventsTable(1:min(12, height(eventsTable)), :));
+
+% Basic sanity checks
+assert(all(ismember(eventsTable.event, [0 1])), 'event must be 0 or 1');
+assert(all(eventsTable.time <= eventsTable.tau + 1e-12), 'No times should exceed tau');
+
+% Per-subject checks
+uids = unique(eventsTable.id);
+nsub = numel(uids);
+
+event_counts = zeros(nsub,1);
+max_gap_err  = 0;
+
+for k = 1:nsub
+    id = uids(k);
+    idx = eventsTable.id == id;
+    T   = eventsTable.time(idx);
+    G   = eventsTable.gap_time(idx);
+    E   = eventsTable.event(idx);
+    Tau = eventsTable.tau(idx);
+
+    % times strictly increasing
+    assert(all(diff(T) > 0), sprintf('Non-increasing times for id=%d', id));
+
+    % tau consistent within subject
+    assert(isscalar(unique(Tau)), sprintf('Multiple tau values for id=%d', id));
+    tau_i = Tau(1);
+
+    % last record should be censoring
+    assert(E(end) == 0, sprintf('Last row must be censoring for id=%d', id));
+    assert(abs(T(end) - tau_i) < 1e-10, sprintf('Last time must equal tau for id=%d', id));
+
+    % gap_time consistency: G(1) == T(1), and for m>=2, G(m) == T(m) - T(m-1)
+    if ~isempty(T)
+        max_gap_err = max(max_gap_err, abs(G(1) - T(1)));
+        if numel(T) >= 2
+            max_gap_err = max(max_gap_err, max(abs(diff(T) - G(2:end))));
+        end
+    end
+
+    % count events
+    event_counts(k) = sum(E == 1);
+end
+
+fprintf('All sanity checks passed.\n');
+fprintf('Max absolute gap_time consistency error: %.3e\n', max_gap_err);
+
+% Censoring percentages
+total_rows            = height(eventsTable);
+censored_rows         = sum(eventsTable.event == 0);
+pct_censored_rows     = 100 * censored_rows / total_rows;
+
+subjects_with_no_ev   = sum(event_counts == 0);         % subjects with zero events (only censoring)
+pct_subjects_no_ev    = 100 * subjects_with_no_ev / nsub;
+
+subjects_with_events  = sum(event_counts > 0);
+pct_subjects_with_ev  = 100 * subjects_with_events / nsub;
+
+% Summary statistics
+fprintf('\n--- Summary ---\n');
+fprintf('Subjects: %d\n', nsub);
+fprintf('Total rows: %d\n', total_rows);
+fprintf('Total events: %d\n', sum(eventsTable.event == 1));
+fprintf('Mean events per subject: %.2f (SD = %.2f)\n', mean(event_counts), std(event_counts));
+fprintf('Censored rows: %d (%.2f%% of rows)\n', censored_rows, pct_censored_rows);
+fprintf('Subjects with no events: %d (%.2f%% of subjects)\n', subjects_with_no_ev, pct_subjects_no_ev);
+fprintf('Subjects with at least one event: %d (%.2f%% of subjects)\n', subjects_with_events, pct_subjects_with_ev);
+
+% Show a random subject timeline
+id_show = uids(randi(nsub));
+idx = eventsTable.id == id_show;
+T   = eventsTable.time(idx);
+E   = eventsTable.event(idx);
+tau_i = eventsTable.tau(find(idx,1));
+
+fprintf('\nExample subject id=%d: events=%d, tau=%.3f\n', id_show, sum(E==1), tau_i);
+disp(eventsTable(idx, :));
+
+% Plot counting process N_i(t): step function that jumps by 1 at each event
+figure('Name', sprintf('Subject %d counting process', id_show));
+hold on;
+
+T_events = T(E==1);
+nEv = numel(T_events);
+
+if nEv > 0
+    % Build right-continuous step function from 0 to tau_i
+    X = [0; T_events(:); tau_i];
+    Y = [0; (1:nEv)'; nEv];
+    stairs(X, Y, 'b-', 'LineWidth', 1.8, 'DisplayName', 'N_i(t)');
+    % Optionally mark event jump points
+    plot(T_events(:), (1:nEv)', 'bo', 'MarkerFaceColor', 'b', 'HandleVisibility','off');
+else
+    % No events: flat zero line until censoring
+    stairs([0; tau_i], [0; 0], 'b-', 'LineWidth', 1.8, 'DisplayName', 'N_i(t)');
+end
+
+% Censoring time
+xline(tau_i, 'r--', 'LineWidth', 1.5, 'DisplayName', 'Censoring \tau');
+
+ylim([0, max(1, nEv)+0.5]);
+xlim([0, tau_i]);
+xlabel('Time');
+ylabel('Cumulative event count N_i(t)');
+title(sprintf('Subject %d: Counting process and censoring', id_show));
+legend('Location','northwest');
+grid on; box on;
+hold off;
